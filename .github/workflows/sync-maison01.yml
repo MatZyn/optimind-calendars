@@ -5,6 +5,9 @@ on:
     - cron: '0 * * * *'  # Toutes les heures
   workflow_dispatch:      # Pour exécuter manuellement si besoin
 
+permissions:
+  contents: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -27,4 +30,4 @@ jobs:
         git config user.email "actions@github.com"
         git add Maison01.ics
         git diff --quiet && echo "Pas de changement" || git commit -m "Mise à jour automatique Maison01.ics"
-        git push
+        git push || true
