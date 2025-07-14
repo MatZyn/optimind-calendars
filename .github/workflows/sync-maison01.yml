@@ -3,7 +3,7 @@ name: Sync Maison01.ics depuis VRBO
 on:
   schedule:
     - cron: '0 * * * *'  # Toutes les heures
-  workflow_dispatch:      # Pour exécuter manuellement si besoin
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -24,10 +24,16 @@ jobs:
       run: |
         sed 's/SUMMARY:.*/SUMMARY:Réservé/g' raw.ics > Maison01.ics
 
-    - name: Commit et push si modifié
+    - name: Vérifier les différences et publier si besoin
       run: |
         git config user.name "github-actions"
         git config user.email "actions@github.com"
-        git add Maison01.ics
-        git diff --quiet && echo "Pas de changement" || git commit -m "Mise à jour automatique Maison01.ics"
-        git push || true
+
+        if ! git diff --quiet Maison01.ics; then
+          git add Maison01.ics
+          git commit -m "Mise à jour automatique Maison01.ics"
+          git push
+        else
+          echo "Pas de changement détecté dans Maison01.ics"
+        fi
+
