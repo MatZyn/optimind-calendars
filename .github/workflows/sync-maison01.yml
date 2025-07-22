@@ -1,34 +1,49 @@
 name: Sync Maison01.ics depuis VRBO
-
 on:
   schedule:
     - cron: '0 * * * *'  # Toutes les heures
   workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
-  sync:
+  sync-ics:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout du dépôt
+    - name: Checkout dépôt
       uses: actions/checkout@v3
-
-    - name: Télécharger le fichier VRBO
+    - name: Installer Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+    - name: Installer icalendar
+      run: pip install icalendar python-dateutil
+    - name: Télécharger fichier ICS depuis VRBO
+      run: curl -o raw.ics "URL_VRBO_ICS"
+    - name: Traiter le fichier ICS
       run: |
-        curl -s -L "http://www.vrbo.com/icalendar/3fdfd900b0ec4547aae7c1dac753f67e.ics?nonTentative" -o raw.ics
-
-    - name: Nettoyer les infos sensibles (noms clients)
+        python -c "
+        from icalendar import Calendar
+        with open('raw.ics', 'rb') as f:
+            cal = Calendar.from_ical(f.read())
+        cal.add('X-WR-CALNAME', 'Calendrier Maison01')
+        for event in cal.walk('VEVENT'):
+            if 'SUMMARY' not in event:
+                event['SUMMARY'] = 'Réservé'
+            else:
+                event['SUMMARY'] = 'Réservé - ' + str(event.get('SUMMARY')).strip()
+            if 'DESCRIPTION' in event:
+                event['DESCRIPTION'] = str(event['DESCRIPTION']).replace('\n', '\\n')[:200]
+        with open('Maison01.ics', 'wb') as f:
+            f.write(cal.to_ical())
+        "
+    - name: Segmenter les lignes longues
       run: |
-        sed 's/SUMMARY:.*/SUMMARY:Réservé/g' raw.ics > Maison01.ics
-
+        fold -w 75 Maison01.ics > Maison01_folded.ics
+        mv Maison01_folded.ics Maison01.ics
     - name: Vérifier les différences et publier si besoin
       run: |
         git config user.name "github-actions"
         git config user.email "actions@github.com"
-
         if ! git diff --quiet Maison01.ics; then
           git add Maison01.ics
           git commit -m "Mise à jour automatique Maison01.ics"
@@ -36,4 +51,3 @@ jobs:
         else
           echo "Pas de changement détecté dans Maison01.ics"
         fi
-
