@@ -1,73 +1,22 @@
-name: Sync Maison01.ics depuis VRBO
-on:
-  schedule:
-    - cron: '0 * * * *'  # Toutes les heures
-  workflow_dispatch:
-permissions:
-  contents: write
-jobs:
-  sync-ics:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout dépôt
-      uses: actions/checkout@v3
-    - name: Installer Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.x'
-    - name: Installer icalendar
-      run: pip install icalendar python-dateutil
-    - name: Télécharger fichier ICS depuis VRBO
-      run: |
-        curl -o raw.ics "URL_VRBO_ICS" || { echo "Erreur lors du téléchargement de raw.ics"; exit 1; }
-        if [ ! -s raw.ics ]; then echo "Fichier raw.ics vide ou non téléchargé"; exit 1; fi
-        cat raw.ics | head -n 20 > raw_head.txt
-        echo "Premières lignes de raw.ics:"
-        cat raw_head.txt
-    - name: Traiter le fichier ICS
-      run: |
-        python -c "
-        from icalendar import Calendar
-        import sys
-        try:
-            with open('raw.ics', 'rb') as f:
-                cal = Calendar.from_ical(f.read())
-        except Exception as e:
-            print('Erreur lors du parsing de raw.ics:', str(e))
-            sys.exit(1)
-        cal.add('X-WR-CALNAME', 'Calendrier Maison01')
-        cal.add('X-WR-TIMEZONE', 'Europe/Paris')
-        event_count = 0
-        for event in cal.walk('VEVENT'):
-            if 'DTSTART' not in event or 'DTEND' not in event:
-                print('Événement ignoré (DTSTART ou DTEND manquant):', event.get('SUMMARY', 'Inconnu'))
-                continue
-            event['SUMMARY'] = 'Réservé - ' + str(event.get('SUMMARY', 'Maison01')).strip()[:50]
-            if 'DESCRIPTION' in event:
-                event['DESCRIPTION'] = str(event['DESCRIPTION']).replace('\n', '\\n')[:200]
-            event_count += 1
-        print(f'Événements traités: {eventharia_count}')
-        if event_count == 0:
-            print('Aucun événement valide trouvé dans raw.ics')
-            sys.exit(1)
-        with open('Maison01.ics', 'wb') as f:
-            f.write(cal.to_ical())
-        "
-    - name: Segmenter les lignes longues
-      run: |
-        fold -w 75 Maison01.ics > Maison01_folded.ics
-        mv Maison01_folded.ics Maison01.ics
-        cat Maison01.ics | head -n 20 > maison01_head.txt
-        echo "Premières lignes de Maison01.ics:"
-        cat maison01_head.txt
-    - name: Vérifier les différences et publier si besoin
-      run: |
-        git config user.name "github-actions"
-        git config user.email "actions@github.com"
-        if ! git diff --quiet Maison01.ics; then
-          git add Maison01.ics
-          git commit -m "Mise à jour automatique Maison01.ics"
-          git push
-        else
-          echo "Pas de changement détecté dans Maison01.ics"
-        fi
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Optimind//Calendrier Maison01//FR
+X-WR-CALNAME:Calendrier Maison01
+X-WR-TIMEZONE:Europe/Paris
+BEGIN:VEVENT
+UID:res1@optimind.free.nf
+DTSTART:20250725T140000
+DTEND:20250727T110000
+SUMMARY:Réservé - Maison01 Juillet
+DESCRIPTION:Réservation confirmée\nContact: info@optimind.free.nf
+LOCATION:Maison01, Rue Exemple
+END:VEVENT
+BEGIN:VEVENT
+UID:res2@optimind.free.nf
+DTSTART:20250801T140000
+DTEND:20250803T110000
+SUMMARY:Réservé - Maison01 Août
+DESCRIPTION:Réservation confirmée\nContact: info@optimind.free.nf
+LOCATION:Maison01, Rue Exemple
+END:VEVENT
+END:VCALENDAR
