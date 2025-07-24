@@ -11,12 +11,6 @@ jobs:
     steps:
     - name: Checkout dépôt
       uses: actions/checkout@v3
-    - name: Installer Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.x'
-    - name: Installer icalendar
-      run: pip install icalendar python-dateutil
     - name: Télécharger fichier ICS depuis VRBO
       run: |
         curl -f -L -o raw.ics "http://www.vrbo.com/icalendar/3fdfd900b0ec4547aae7c1dac753f67e.ics?nonTentative" || { echo "Erreur: Impossible de télécharger raw.ics."; exit 1; }
@@ -25,66 +19,25 @@ jobs:
         cat raw.ics | head -n 50 > raw_head.txt
         echo "Premières lignes de raw.ics:"
         cat raw_head.txt
-    - name: Traiter le fichier ICS
+    - name: Générer Maison01.ics avec métadonnées
       run: |
-        python -c "
-        from icalendar import Calendar, vDate
-        from datetime import date, datetime
-        from dateutil import parser
-        import sys
-        try:
-            with open('raw.ics', 'rb') as f:
-                cal = Calendar.from_ical(f.read())
-        except Exception as e:
-            print('Erreur lors du parsing de raw.ics:', str(e))
-            sys.exit(1)
-        cal.add('X-WR-CALNAME', 'Calendrier Maison01')
-        cal.add('X-WR-TIMEZONE', 'Europe/Paris')
-        event_count = 0
-        for event in cal.walk('VEVENT'):
-            print('Événement trouvé:', event.get('SUMMARY', 'Inconnu'), event.get('DTSTART', 'Date inconnue'), event.get('DTEND', 'Date inconnue'))
-            if 'DTSTART' not in event or 'DTEND' not in event:
-                print('Événement ignoré (DTSTART ou DTEND manquant):', event.get('SUMMARY', 'Inconnu'))
-                continue
-            try:
-                dtstart = event['DTSTART'].dt
-                dtend = event['DTEND'].dt
-                # Gérer les dates au format VALUE=DATE
-                if isinstance(dtstart, date) and not isinstance(dtstart, datetime):
-                    event['DTSTART'] = vDate(dtstart)
-                if isinstance(dtend, date) and not isinstance(dtend, datetime):
-                    event['DTEND'] = vDate(dtend)
-                # Gérer les dates texte si présentes
-                if isinstance(dtstart, str):
-                    dtstart = parser.parse(dtstart)
-                    event['DTSTART'] = vDate(dtstart) if isinstance(dtstart, date) and not isinstance(dtstart, datetime) else dtstart
-                if isinstance(dtend, str):
-                    dtend = parser.parse(dtend)
-                    event['DTEND'] = vDate(dtend) if isinstance(dtend, date) and not isinstance(dtend, datetime) else dtend
-            except Exception as e:
-                print('Erreur lors du parsing des dates pour événement:', event.get('SUMMARY', 'Inconnu'), str(e))
-                continue
-            event['SUMMARY'] = 'Réservé - ' + str(event.get('SUMMARY', 'Maison01')).strip()[:50]
-            if 'DESCRIPTION' in event:
-                event['DESCRIPTION'] = str(event['DESCRIPTION']).replace('\n', '\\n')[:200]
-            else:
-                event['DESCRIPTION'] = 'Réservation Maison01'
-            event_count += 1
-        print(f'Total événements traités: {event_count}')
-        if event_count == 0:
-            print('Erreur: Aucun événement valide trouvé dans raw.ics.')
-            sys.exit(1)
-        with open('Maison01.ics', 'wb') as f:
-            f.write(cal.to_ical())
-        "
-    - name: Segmenter les lignes longues
-      run: |
-        fold -w 75 Maison01.ics > Maison01_folded.ics
-        mv Maison01_folded.ics Maison01.ics
+        echo "BEGIN:VCALENDAR" > Maison01.ics
+        echo "VERSION:2.0" >> Maison01.ics
+        echo "CALSCALE:GREGORIAN" >> Maison01.ics
+        echo "PRODID:-//Optimind//Calendrier Maison01//FR" >> Maison01.ics
+        echo "X-WR-CALNAME:Calendrier Maison01" >> Maison01.ics
+        echo "X-WR-TIMEZONE:Europe/Paris" >> Maison01.ics
+        grep -E "^(BEGIN:VEVENT|UID:|DTSTAMP:|DTSTART;VALUE=DATE:|DTEND;VALUE=DATE:|SUMMARY:|END:VEVENT)" raw.ics | sed 's/SUMMARY:Reserved/SUMMARY:Réservé/' | sed 's/SUMMARY:Blocked/SUMMARY:Bloqué/' >> Maison01.ics
+        echo "END:VCALENDAR" >> Maison01.ics
         echo "Taille de Maison01.ics: $(wc -c < Maison01.ics) octets"
         cat Maison01.ics | head -n 50 > maison01_head.txt
         echo "Premières lignes de Maison01.ics:"
         cat maison01_head.txt
+    - name: Segmenter les lignes longues
+      run: |
+        fold -w 75 Maison01.ics > Maison01_folded.ics
+        mv Maison01_folded.ics Maison01.ics
+        echo "Taille de Maison01.ics après segmentation: $(wc -c < Maison01.ics) octets"
     - name: Vérifier les différences et publier si besoin
       run: |
         git config user.name "github-actions"
