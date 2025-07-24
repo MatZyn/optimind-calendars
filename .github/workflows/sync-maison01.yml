@@ -12,17 +12,19 @@ jobs:
   sync-ics:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout dépôt
+    - name: Checkout du dépôt
       uses: actions/checkout@v3
 
-    - name: Télécharger fichier ICS depuis VRBO
+    - name: Télécharger le .ics VRBO
       run: |
-        curl -f -L -o raw.ics "http://www.vrbo.com/icalendar/3fdfd900b0ec4547aae7c1dac753f67e.ics?nonTentative" || { echo "Erreur: Impossible de télécharger raw.ics."; exit 1; }
-        if [ ! -s raw.ics ]; then echo "Erreur: Fichier raw.ics vide."; exit 1; fi
-        echo "Taille de raw.ics: $(wc -c < raw.ics) octets"
-        head -n 20 raw.ics
+        curl -sSfL -o raw.ics "http://www.vrbo.com/icalendar/3fdfd900b0ec4547aae7c1dac753f67e.ics?nonTentative"
+        if [ ! -s raw.ics ]; then
+          echo "❌ Le fichier raw.ics est vide !"
+          exit 1
+        fi
+        echo "✅ raw.ics téléchargé - taille : $(wc -c < raw.ics) octets"
 
-    - name: Générer Maison01.ics avec métadonnées
+    - name: Générer Maison01.ics propre
       run: |
         {
           echo "BEGIN:VCALENDAR"
@@ -32,26 +34,27 @@ jobs:
           echo "X-WR-CALNAME:Calendrier Maison01"
           echo "X-WR-TIMEZONE:Europe/Paris"
           grep -E "^(BEGIN:VEVENT|UID:|DTSTAMP:|DTSTART.*|DTEND.*|SUMMARY:|END:VEVENT)" raw.ics \
-            | sed 's/SUMMARY:Reserved/SUMMARY:Réservé/' \
-            | sed 's/SUMMARY:Blocked/SUMMARY:Bloqué/'
+            | sed -E 's/SUMMARY:Reserved.*/SUMMARY:Réservé - Maison01/' \
+            | sed -E 's/SUMMARY:Blocked.*/SUMMARY:Bloqué/' 
           echo "END:VCALENDAR"
         } > Maison01.ics
-        head -n 20 Maison01.ics
+        echo "✅ Maison01.ics généré - taille : $(wc -c < Maison01.ics) octets"
 
-    - name: Segmenter les lignes longues
+    - name: Segmenter les longues lignes (compatibilité)
       run: |
-        fold -w 75 Maison01.ics > Maison01_folded.ics
-        mv Maison01_folded.ics Maison01.ics
+        fold -w 75 Maison01.ics > Maison01_tmp.ics && mv Maison01_tmp.ics Maison01.ics
 
-    - name: Vérifier les différences et publier si besoin
+    - name: Commit si modification
       run: |
         git config user.name "github-actions"
         git config user.email "actions@github.com"
         git add Maison01.ics
         if ! git diff --cached --quiet; then
-          git commit -m "Mise à jour automatique Maison01.ics"
+          git commit -m "🔁 Mise à jour automatique Maison01.ics"
           git push
+          echo "✅ Fichier mis à jour et envoyé."
         else
-          echo "Pas de changement détecté dans Maison01.ics"
+          echo "ℹ️ Aucun changement détecté dans Maison01.ics."
         fi
+
 
