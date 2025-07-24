@@ -1,51 +1,57 @@
 name: Sync Maison01.ics depuis VRBO
+
 on:
   schedule:
     - cron: '0 * * * *'  # Toutes les heures
   workflow_dispatch:
+
 permissions:
   contents: write
+
 jobs:
   sync-ics:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout dépôt
       uses: actions/checkout@v3
+
     - name: Télécharger fichier ICS depuis VRBO
       run: |
         curl -f -L -o raw.ics "http://www.vrbo.com/icalendar/3fdfd900b0ec4547aae7c1dac753f67e.ics?nonTentative" || { echo "Erreur: Impossible de télécharger raw.ics."; exit 1; }
         if [ ! -s raw.ics ]; then echo "Erreur: Fichier raw.ics vide."; exit 1; fi
         echo "Taille de raw.ics: $(wc -c < raw.ics) octets"
-        cat raw.ics | head -n 50 > raw_head.txt
-        echo "Premières lignes de raw.ics:"
-        cat raw_head.txt
+        head -n 20 raw.ics
+
     - name: Générer Maison01.ics avec métadonnées
       run: |
-        echo "BEGIN:VCALENDAR" > Maison01.ics
-        echo "VERSION:2.0" >> Maison01.ics
-        echo "CALSCALE:GREGORIAN" >> Maison01.ics
-        echo "PRODID:-//Optimind//Calendrier Maison01//FR" >> Maison01.ics
-        echo "X-WR-CALNAME:Calendrier Maison01" >> Maison01.ics
-        echo "X-WR-TIMEZONE:Europe/Paris" >> Maison01.ics
-        cat raw.ics | grep -E "^(BEGIN:VEVENT|UID:|DTSTAMP:|DTSTART;VALUE=DATE:|DTEND;VALUE=DATE:|SUMMARY:|END:VEVENT)" | sed 's/SUMMARY:Reserved/SUMMARY:Réservé/' | sed 's/SUMMARY:Blocked/SUMMARY:Bloqué/' >> Maison01.ics
-        echo "END:VCALENDAR" >> Maison01.ics
-        echo "Taille de Maison01.ics: $(wc -c < Maison01.ics) octets"
-        cat Maison01.ics | head -n 50 > maison01_head.txt
-        echo "Premières lignes de Maison01.ics:"
-        cat maison01_head.txt
+        {
+          echo "BEGIN:VCALENDAR"
+          echo "VERSION:2.0"
+          echo "CALSCALE:GREGORIAN"
+          echo "PRODID:-//Optimind//Calendrier Maison01//FR"
+          echo "X-WR-CALNAME:Calendrier Maison01"
+          echo "X-WR-TIMEZONE:Europe/Paris"
+          grep -E "^(BEGIN:VEVENT|UID:|DTSTAMP:|DTSTART.*|DTEND.*|SUMMARY:|END:VEVENT)" raw.ics \
+            | sed 's/SUMMARY:Reserved/SUMMARY:Réservé/' \
+            | sed 's/SUMMARY:Blocked/SUMMARY:Bloqué/'
+          echo "END:VCALENDAR"
+        } > Maison01.ics
+        head -n 20 Maison01.ics
+
     - name: Segmenter les lignes longues
       run: |
         fold -w 75 Maison01.ics > Maison01_folded.ics
         mv Maison01_folded.ics Maison01.ics
-        echo "Taille de Maison01.ics après segmentation: $(wc -c < Maison01.ics) octets"
+
     - name: Vérifier les différences et publier si besoin
       run: |
         git config user.name "github-actions"
         git config user.email "actions@github.com"
-        if ! git diff --quiet Maison01.ics; then
-          git add Maison01.ics
+        git add Maison01.ics
+        if ! git diff --cached --quiet; then
           git commit -m "Mise à jour automatique Maison01.ics"
           git push
         else
           echo "Pas de changement détecté dans Maison01.ics"
         fi
+
