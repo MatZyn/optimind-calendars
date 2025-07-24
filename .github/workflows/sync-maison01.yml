@@ -19,17 +19,17 @@ jobs:
       run: pip install icalendar python-dateutil
     - name: Télécharger fichier ICS depuis VRBO
       run: |
-        curl -f -o raw.ics "http://www.vrbo.com/icalendar/3fdfd900b0ec4547aae7c1dac753f67e.ics?nonTentative" || { echo "Erreur: Impossible de télécharger raw.ics. Vérifiez l'URL VRBO."; exit 1; }
+        curl -f -L -o raw.ics "http://www.vrbo.com/icalendar/3fdfd900b0ec4547aae7c1dac753f67e.ics?nonTentative" || { echo "Erreur: Impossible de télécharger raw.ics. Vérifiez l'URL VRBO."; exit 1; }
         if [ ! -s raw.ics ]; then echo "Erreur: Fichier raw.ics vide."; exit 1; fi
         echo "Taille de raw.ics: $(wc -c < raw.ics) octets"
-        cat raw.ics | head -n 30 > raw_head.txt
+        cat raw.ics | head -n 50 > raw_head.txt
         echo "Premières lignes de raw.ics:"
         cat raw_head.txt
     - name: Traiter le fichier ICS
       run: |
         python -c "
         from icalendar import Calendar
-        from datetime import datetime
+        from datetime import datetime, date
         from dateutil import parser
         import sys
         try:
@@ -42,19 +42,27 @@ jobs:
         cal.add('X-WR-TIMEZONE', 'Europe/Paris')
         event_count = 0
         for event in cal.walk('VEVENT'):
-            print('Événement trouvé:', event.get('SUMMARY', 'Inconnu'), event.get('DTSTART', 'Date inconnue'))
+            print('Événement trouvé:', event.get('SUMMARY', 'Inconnu'), event.get('DTSTART', 'Date inconnue'), event.get('DTEND', 'Date inconnue'))
             if 'DTSTART' not in event or 'DTEND' not in event:
                 print('Événement ignoré (DTSTART ou DTEND manquant):', event.get('SUMMARY', 'Inconnu'))
                 continue
             try:
                 dtstart = event['DTSTART'].dt
                 dtend = event['DTEND'].dt
+                # Convertir les dates si elles sont en format texte ou date uniquement
                 if isinstance(dtstart, str):
-                    event['DTSTART'].dt = parser.parse(dtstart)
+                    dtstart = parser.parse(dtstart)
+                    event['DTSTART'].dt = dtstart
                 if isinstance(dtend, str):
-                    event['DTEND'].dt = parser.parse(dtend)
+                    dtend = parser.parse(dtend)
+                    event['DTEND'].dt = dtend
+                # Gérer les événements sur une seule journée (VRBO peut utiliser des dates sans heure)
+                if isinstance(dtstart, date) and not isinstance(dtstart, datetime):
+                    event['DTSTART'] = 'VALUE=DATE:' + dtstart.strftime('%Y%m%d')
+                if isinstance(dtend, date) and not isinstance(dtend, datetime):
+                    event['DTEND'] = 'VALUE=DATE:' + dtend.strftime('%Y%m%d')
             except Exception as e:
-                print('Erreur lors du parsing des dates:', str(e))
+                print('Erreur lors du parsing des dates pour événement:', event.get('SUMMARY', 'Inconnu'), str(e))
                 continue
             event['SUMMARY'] = 'Réservé - ' + str(event.get('SUMMARY', 'Maison01')).strip()[:50]
             if 'DESCRIPTION' in event:
@@ -72,7 +80,7 @@ jobs:
         fold -w 75 Maison01.ics > Maison01_folded.ics
         mv Maison01_folded.ics Maison01.ics
         echo "Taille de Maison01.ics: $(wc -c < Maison01.ics) octets"
-        cat Maison01.ics | head -n 30 > maison01_head.txt
+        cat Maison01.ics | head -n 50 > maison01_head.txt
         echo "Premières lignes de Maison01.ics:"
         cat maison01_head.txt
     - name: Vérifier les différences et publier si besoin
