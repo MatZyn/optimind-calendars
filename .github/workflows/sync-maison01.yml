@@ -27,7 +27,7 @@ jobs:
         echo "PRODID:-//Optimind//Calendrier Maison01//FR" >> Maison01.ics
         echo "X-WR-CALNAME:Calendrier Maison01" >> Maison01.ics
         echo "X-WR-TIMEZONE:Europe/Paris" >> Maison01.ics
-        grep -E "^(BEGIN:VEVENT|UID:|DTSTAMP:|DTSTART;VALUE=DATE:|DTEND;VALUE=DATE:|SUMMARY:|END:VEVENT)" raw.ics | sed 's/SUMMARY:Reserved/SUMMARY:Réservé/' | sed 's/SUMMARY:Blocked/SUMMARY:Bloqué/' >> Maison01.ics
+        cat raw.ics | grep -E "^(BEGIN:VEVENT|UID:|DTSTAMP:|DTSTART;VALUE=DATE:|DTEND;VALUE=DATE:|SUMMARY:|END:VEVENT)" | sed 's/SUMMARY:Reserved/SUMMARY:Réservé/' | sed 's/SUMMARY:Blocked/SUMMARY:Bloqué/' >> Maison01.ics
         echo "END:VCALENDAR" >> Maison01.ics
         echo "Taille de Maison01.ics: $(wc -c < Maison01.ics) octets"
         cat Maison01.ics | head -n 50 > maison01_head.txt
