@@ -1,85 +1,83 @@
 name: Sync Maison01.ics depuis VRBO
-
 on:
   schedule:
     - cron: '0 * * * *'  # Toutes les heures
   workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
   sync-ics:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout dépôt
-        uses: actions/checkout@v3
-
-      - name: Installer Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-
-      - name: Installer icalendar
-        run: pip install icalendar python-dateutil
-
-      - name: Télécharger fichier ICS depuis VRBO
-        run: |
-          curl -f -o raw.ics "http://www.vrbo.com/icalendar/3fdfd900b0ec4547aae7c1dac753f67e.ics?nonTentative" || { echo "Erreur: Impossible de télécharger raw.ics. Vérifiez l'URL VRBO."; exit 1; }
-          if [ ! -s raw.ics ]; then echo "Erreur: Fichier raw.ics vide."; exit 1; fi
-          cat raw.ics | head -n 20 > raw_head.txt
-          echo "Premières lignes de raw.ics:"
-          cat raw_head.txt
-
-      - name: Traiter le fichier ICS
-        run: |
-          python -c "
-          from icalendar import Calendar
-          import sys
-          try:
-              with open('raw.ics', 'rb') as f:
-                  cal = Calendar.from_ical(f.read())
-          except Exception as e:
-              print('Erreur lors du parsing de raw.ics:', str(e))
-              sys.exit(1)
-
-          cal.add('X-WR-CALNAME', 'Calendrier Maison01')
-          cal.add('X-WR-TIMEZONE', 'Europe/Paris')
-
-          event_count = 0
-          for event in cal.walk('VEVENT'):
-              if 'DTSTART' not in event or 'DTEND' not in event:
-                  print('Événement ignoré (DTSTART ou DTEND manquant):', event.get('SUMMARY', 'Inconnu'))
-                  continue
-              event['SUMMARY'] = 'Réservé - ' + str(event.get('SUMMARY', 'Maison01')).strip()[:50]
-              if 'DESCRIPTION' in event:
-                  event['DESCRIPTION'] = str(event['DESCRIPTION']).replace('\n', '\\n')[:200]
-              event_count += 1
-
-          print(f'Événements traités: {event_count}')
-          if event_count == 0:
-              print('Erreur: Aucun événement valide trouvé dans raw.ics.')
-              sys.exit(1)
-
-          with open('Maison01.ics', 'wb') as f:
-              f.write(cal.to_ical())
-          "
-
-      - name: Segmenter les lignes longues
-        run: |
-          fold -w 75 Maison01.ics > Maison01_folded.ics
-          mv Maison01_folded.ics Maison01.ics
-          cat Maison01.ics | head -n 20 > maison01_head.txt
-          echo "Premières lignes de Maison01.ics:"
-          cat maison01_head.txt
-
-      - name: Vérifier les différences et publier si besoin
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          if ! git diff --quiet Maison01.ics; then
-            git add Maison01.ics
-            git commit -m "Mise à jour automatique Maison01.ics"
-            git push
-          else
-            echo "Pas de changement détecté dans Maison01.ics"
+    - name: Checkout dépôt
+      uses: actions/checkout@v3
+    - name: Installer Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+    - name: Installer icalendar
+      run: pip install icalendar python-dateutil
+    - name: Télécharger fichier ICS depuis VRBO
+      run: |
+        curl -f -o raw.ics "http://www.vrbo.com/icalendar/3fdfd900b0ec4547aae7c1dac753f67e.ics?nonTentative" || { echo "Erreur: Impossible de télécharger raw.ics. Vérifiez l'URL VRBO."; exit 1; }
+        if [ ! -s raw.ics ]; then echo "Erreur: Fichier raw.ics vide."; exit 1; fi
+        echo "Taille de raw.ics: $(wc -c < raw.ics) octets"
+        cat raw.ics | head -n 30 > raw_head.txt
+        echo "Premières lignes de raw.ics:"
+        cat raw_head.txt
+    - name: Traiter le fichier ICS
+      run: |
+        python -c "
+        from icalendar import Calendar
+        from datetime import datetime
+        from dateutil import parser
+        import sys
+        try:
+            with open('raw.ics', 'rb') as f:
+                cal = Calendar.from_ical(f.read())
+        except Exception as e:
+            print('Erreur lors du parsing de raw.ics:', str(e))
+            sys.exit(1)
+        cal.add('X-WR-CALNAME', 'Calendrier Maison01')
+        cal.add('X-WR-TIMEZONE', 'Europe/Paris')
+        event_count = 0
+        for event in cal.walk('VEVENT'):
+            print('Événement trouvé:', event.get('SUMMARY', 'Inconnu'), event.get('DTSTART', 'Date inconnue'))
+            if 'DTSTART' not in event or 'DTEND' not in event:
+                print('Événement ignoré (DTSTART ou DTEND manquant):', event.get('SUMMARY', 'Inconnu'))
+                continue
+            # Convertir DTSTART et DTEND si nécessaire
+            if isinstance(event['DTSTART'].dt, str):
+                event['DTSTART'].dt = parser.parse(event['DTSTART'].dt)
+            if isinstance(event['DTEND'].dt, str):
+                event['DTEND'].dt = parser.parse(event['DTEND'].dt)
+            event['SUMMARY'] = 'Réservé - ' + str(event.get('SUMMARY', 'Maison01')).strip()[:50]
+            if 'DESCRIPTION' in event:
+                event['DESCRIPTION'] = str(event['DESCRIPTION']).replace('\n', '\\n')[:200]
+            event_count += 1
+        print(f'Total événements traités: {event_count}')
+        if event_count == 0:
+            print('Erreur: Aucun événement valide trouvé dans raw.ics.')
+            sys.exit(1)
+        with open('Maison01.ics', 'wb') as f:
+            f.write(cal.to_ical())
+        "
+    - name: Segmenter les lignes longues
+      run: |
+        fold -w 75 Maison01.ics > Maison01_folded.ics
+        mv Maison01_folded.ics Maison01.ics
+        echo "Taille de Maison01.ics: $(wc -c < Maison01.ics) octets"
+        cat Maison01.ics | head -n 30 > maison01_head.txt
+        echo "Premières lignes de Maison01.ics:"
+        cat maison01_head.txt
+    - name: Vérifier les différences et publier si besoin
+      run: |
+        git config user.name "github-actions"
+        git config user.email "actions@github.com"
+        if ! git diff --quiet Maison01.ics; then
+          git add Maison01.ics
+          git commit -m "Mise à jour automatique Maison01.ics"
+          git push
+        else
+          echo "Pas de changement détecté dans Maison01.ics"
+        fi
