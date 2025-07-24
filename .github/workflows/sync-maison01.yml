@@ -46,11 +46,16 @@ jobs:
             if 'DTSTART' not in event or 'DTEND' not in event:
                 print('Événement ignoré (DTSTART ou DTEND manquant):', event.get('SUMMARY', 'Inconnu'))
                 continue
-            # Convertir DTSTART et DTEND si nécessaire
-            if isinstance(event['DTSTART'].dt, str):
-                event['DTSTART'].dt = parser.parse(event['DTSTART'].dt)
-            if isinstance(event['DTEND'].dt, str):
-                event['DTEND'].dt = parser.parse(event['DTEND'].dt)
+            try:
+                dtstart = event['DTSTART'].dt
+                dtend = event['DTEND'].dt
+                if isinstance(dtstart, str):
+                    event['DTSTART'].dt = parser.parse(dtstart)
+                if isinstance(dtend, str):
+                    event['DTEND'].dt = parser.parse(dtend)
+            except Exception as e:
+                print('Erreur lors du parsing des dates:', str(e))
+                continue
             event['SUMMARY'] = 'Réservé - ' + str(event.get('SUMMARY', 'Maison01')).strip()[:50]
             if 'DESCRIPTION' in event:
                 event['DESCRIPTION'] = str(event['DESCRIPTION']).replace('\n', '\\n')[:200]
