@@ -19,7 +19,7 @@ jobs:
       run: pip install icalendar python-dateutil
     - name: Télécharger fichier ICS depuis VRBO
       run: |
-        curl -f -L -o raw.ics "http://www.vrbo.com/icalendar/3fdfd900b0ec4547aae7c1dac753f67e.ics?nonTentative" || { echo "Erreur: Impossible de télécharger raw.ics. Vérifiez l'URL VRBO."; exit 1; }
+        curl -f -L -o raw.ics "http://www.vrbo.com/icalendar/3fdfd900b0ec4547aae7c1dac753f67e.ics?nonTentative" || { echo "Erreur: Impossible de télécharger raw.ics."; exit 1; }
         if [ ! -s raw.ics ]; then echo "Erreur: Fichier raw.ics vide."; exit 1; fi
         echo "Taille de raw.ics: $(wc -c < raw.ics) octets"
         cat raw.ics | head -n 50 > raw_head.txt
@@ -28,8 +28,8 @@ jobs:
     - name: Traiter le fichier ICS
       run: |
         python -c "
-        from icalendar import Calendar
-        from datetime import datetime, date
+        from icalendar import Calendar, vDate
+        from datetime import date, datetime
         from dateutil import parser
         import sys
         try:
@@ -49,24 +49,26 @@ jobs:
             try:
                 dtstart = event['DTSTART'].dt
                 dtend = event['DTEND'].dt
-                # Convertir les dates si elles sont en format texte ou date uniquement
+                # Gérer les dates au format VALUE=DATE
+                if isinstance(dtstart, date) and not isinstance(dtstart, datetime):
+                    event['DTSTART'] = vDate(dtstart)
+                if isinstance(dtend, date) and not isinstance(dtend, datetime):
+                    event['DTEND'] = vDate(dtend)
+                # Gérer les dates texte si présentes
                 if isinstance(dtstart, str):
                     dtstart = parser.parse(dtstart)
-                    event['DTSTART'].dt = dtstart
+                    event['DTSTART'] = vDate(dtstart) if isinstance(dtstart, date) and not isinstance(dtstart, datetime) else dtstart
                 if isinstance(dtend, str):
                     dtend = parser.parse(dtend)
-                    event['DTEND'].dt = dtend
-                # Gérer les événements sur une seule journée (VRBO peut utiliser des dates sans heure)
-                if isinstance(dtstart, date) and not isinstance(dtstart, datetime):
-                    event['DTSTART'] = 'VALUE=DATE:' + dtstart.strftime('%Y%m%d')
-                if isinstance(dtend, date) and not isinstance(dtend, datetime):
-                    event['DTEND'] = 'VALUE=DATE:' + dtend.strftime('%Y%m%d')
+                    event['DTEND'] = vDate(dtend) if isinstance(dtend, date) and not isinstance(dtend, datetime) else dtend
             except Exception as e:
                 print('Erreur lors du parsing des dates pour événement:', event.get('SUMMARY', 'Inconnu'), str(e))
                 continue
             event['SUMMARY'] = 'Réservé - ' + str(event.get('SUMMARY', 'Maison01')).strip()[:50]
             if 'DESCRIPTION' in event:
                 event['DESCRIPTION'] = str(event['DESCRIPTION']).replace('\n', '\\n')[:200]
+            else:
+                event['DESCRIPTION'] = 'Réservation Maison01'
             event_count += 1
         print(f'Total événements traités: {event_count}')
         if event_count == 0:
